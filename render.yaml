@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: agent-forge
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: QDRANT_HOST
+        value: ":memory:"
+      - key: LOG_LEVEL
+        value: "INFO"

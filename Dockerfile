@@ -25,6 +25,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip setuptools wheel && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install -r requirements.txt
 
 # Pre-cache huggingface transformer models for instant container readiness
