@@ -35,7 +35,12 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     def assemble_db_url(cls, v: str | None, values) -> str:
         if v and len(v.strip()) > 0:
-            return v
+            url_str = v.strip()
+            if url_str.startswith("postgres://"):
+                url_str = url_str.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url_str.startswith("postgresql://") and not url_str.startswith("postgresql+asyncpg://"):
+                url_str = url_str.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url_str
         data = values.data if hasattr(values, "data") else values
         user = data.get("POSTGRES_USER", "postgres")
         pwd = data.get("POSTGRES_PASSWORD", "postgres")

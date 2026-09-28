@@ -136,12 +136,19 @@ class QdrantVectorService:
 
     async def get_client(self) -> AsyncQdrantClient:
         if self.client is None:
-            self.client = AsyncQdrantClient(
-                host=settings.QDRANT_HOST,
-                port=settings.QDRANT_PORT,
-                api_key=settings.QDRANT_API_KEY,
-                timeout=10.0
-            )
+            if settings.QDRANT_HOST.startswith(("http://", "https://", ":memory:")):
+                self.client = AsyncQdrantClient(
+                    url=settings.QDRANT_HOST,
+                    api_key=settings.QDRANT_API_KEY,
+                    timeout=10.0
+                )
+            else:
+                self.client = AsyncQdrantClient(
+                    host=settings.QDRANT_HOST,
+                    port=settings.QDRANT_PORT,
+                    api_key=settings.QDRANT_API_KEY,
+                    timeout=10.0
+                )
         return self.client
 
     async def ensure_collection(self) -> None:
