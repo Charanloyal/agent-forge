@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentforge_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-agentforge}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agentforge_network
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.7
+    container_name: agentforge_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agentforge_network
+
+  agentforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentforge_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    environment:
+      APP_NAME: "AgentForge"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-agentforge}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION: agentforge_chunks
+      EMBEDDING_MODEL_NAME: sentence-transformers/all-MiniLM-L6-v2
+      RERANKER_MODEL_NAME: cross-encoder/ms-marco-MiniLM-L-6-v2
+      RRF_K: 60
+      TOP_K_DENSE: 15
+      TOP_K_SPARSE: 15
+      TOP_K_FUSED: 10
+      TOP_K_RERANKED: 5
+      RERANKER_SCORE_THRESHOLD: 0.20
+      RELEVANCE_PASS_THRESHOLD: 0.25
+      FAITHFULNESS_PASS_THRESHOLD: 0.60
+      MAX_REFLECTION_ITERATIONS: 2
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    networks:
+      - agentforge_network
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+
+networks:
+  agentforge_network:
+    driver: bridge
