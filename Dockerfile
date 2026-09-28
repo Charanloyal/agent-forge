@@ -28,10 +28,7 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install -r requirements.txt
 
-# Pre-cache huggingface transformer models for instant container readiness
-RUN python -c "from sentence_transformers import SentenceTransformer, CrossEncoder; \
-    SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); \
-    CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+# Models will load lazily on first request via ModelRegistry
 
 # ==========================================
 # Stage 2: Final Minimal Runtime Image
@@ -52,12 +49,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment and HF model cache from builder
+# Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /root/.cache/huggingface /opt/hf_cache
 
-# Create non-root system user
-RUN useradd -m -u 10001 -s /bin/bash appuser && \
+# Create non-root system user and cache directory
+RUN mkdir -p /opt/hf_cache && \
+    useradd -m -u 10001 -s /bin/bash appuser && \
     chown -R appuser:appuser /app /opt/hf_cache
 
 # Copy application source code
