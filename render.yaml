@@ -11,3 +11,5 @@ services:
         value: ":memory:"
       - key: LOG_LEVEL
         value: "INFO"
+      - key: USE_SQLITE
+        value: "true"

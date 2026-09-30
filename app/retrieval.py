@@ -4,14 +4,66 @@ import uuid
 import logging
 import threading
 from typing import Any
-from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer, CrossEncoder
-from qdrant_client import AsyncQdrantClient
-from qdrant_client.http import models as qmodels
-from app.config import get_settings
+try:
+    from sentence_transformers import SentenceTransformer, CrossEncoder
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
 
-logger = logging.getLogger("agentforge.retrieval")
-settings = get_settings()
+
+class FastFeatureEmbedder:
+    """
+    Ultra-fast, zero-dependency subword n-gram feature hashing embedder.
+    Produces unit-normalized dense vectors of length `dim` (384) in milliseconds.
+    Used when PyTorch/SentenceTransformers is not loaded to preserve <50MB RAM footprint.
+    """
+    def __init__(self, dim: int = 384) -> None:
+        self.dim = dim
+
+    def encode(self, sentences: str | list[str], normalize_embeddings: bool = True, show_progress_bar: bool = False) -> Any:
+        is_single = isinstance(sentences, str)
+        input_list = [sentences] if is_single else sentences
+
+        import numpy as np
+        vectors = []
+        for text in input_list:
+            vec = np.zeros(self.dim, dtype=np.float32)
+            tokens = re.findall(r"\b\w+\b", text.lower())
+            for token in tokens:
+                idx = abs(hash(token)) % self.dim
+                vec[idx] += 1.0
+                for i in range(len(token) - 2):
+                    sub_idx = abs(hash(token[i:i+3])) % self.dim
+                    vec[sub_idx] += 0.5
+            norm = np.linalg.norm(vec)
+            if norm > 0 and normalize_embeddings:
+                vec = vec / norm
+            vectors.append(vec)
+
+        arr = np.array(vectors, dtype=np.float32)
+        return arr[0] if is_single else arr
+
+
+class FastCrossEncoder:
+    """
+    Fast subword Jaccard & lexical overlap cross-encoder scorer.
+    Computes pairwise relevance logits mapped via sigmoid to [0, 1].
+    """
+    def predict(self, pairs: list[list[str]]) -> list[float]:
+        logits = []
+        for query, passage in pairs:
+            q_tokens = set(re.findall(r"\b\w+\b", query.lower()))
+            p_tokens = set(re.findall(r"\b\w+\b", passage.lower()))
+            if not q_tokens or not p_tokens:
+                logits.append(-2.0)
+                continue
+            intersection = q_tokens.intersection(p_tokens)
+            union = q_tokens.union(p_tokens)
+            jaccard = len(intersection) / len(union) if union else 0.0
+            overlap_ratio = len(intersection) / len(q_tokens) if q_tokens else 0.0
+            logit = (jaccard * 3.0 + overlap_ratio * 3.0) - 1.0
+            logits.append(float(logit))
+        return logits
 
 
 class ModelRegistry:
@@ -19,26 +71,44 @@ class ModelRegistry:
     Thread-safe lazy-loading singleton for local neural models
     (Dense Embedder & Cross-Encoder Reranker).
     """
-    _embedding_model: SentenceTransformer | None = None
-    _reranker_model: CrossEncoder | None = None
+    _embedding_model: Any = None
+    _reranker_model: Any = None
     _lock: threading.Lock = threading.Lock()
 
     @classmethod
-    def get_embedding_model(cls) -> SentenceTransformer:
+    def get_embedding_model(cls) -> Any:
         if cls._embedding_model is None:
             with cls._lock:
                 if cls._embedding_model is None:
-                    logger.info("Loading dense embedding model: %s", settings.EMBEDDING_MODEL_NAME)
-                    cls._embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
+                    if HAS_SENTENCE_TRANSFORMERS:
+                        try:
+                            import torch
+                            torch.set_num_threads(1)
+                            logger.info("Loading dense embedding model: %s", settings.EMBEDDING_MODEL_NAME)
+                            cls._embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
+                        except Exception as exc:
+                            logger.warning("Could not load SentenceTransformer (%s). Using FastFeatureEmbedder fallback.", exc)
+                            cls._embedding_model = FastFeatureEmbedder(dim=settings.EMBEDDING_DIMENSION)
+                    else:
+                        logger.info("SentenceTransformers not installed. Using FastFeatureEmbedder fallback.")
+                        cls._embedding_model = FastFeatureEmbedder(dim=settings.EMBEDDING_DIMENSION)
         return cls._embedding_model
 
     @classmethod
-    def get_reranker_model(cls) -> CrossEncoder:
+    def get_reranker_model(cls) -> Any:
         if cls._reranker_model is None:
             with cls._lock:
                 if cls._reranker_model is None:
-                    logger.info("Loading cross-encoder reranker model: %s", settings.RERANKER_MODEL_NAME)
-                    cls._reranker_model = CrossEncoder(settings.RERANKER_MODEL_NAME)
+                    if HAS_SENTENCE_TRANSFORMERS:
+                        try:
+                            logger.info("Loading cross-encoder reranker model: %s", settings.RERANKER_MODEL_NAME)
+                            cls._reranker_model = CrossEncoder(settings.RERANKER_MODEL_NAME)
+                        except Exception as exc:
+                            logger.warning("Could not load CrossEncoder (%s). Using FastCrossEncoder fallback.", exc)
+                            cls._reranker_model = FastCrossEncoder()
+                    else:
+                        logger.info("SentenceTransformers not installed. Using FastCrossEncoder fallback.")
+                        cls._reranker_model = FastCrossEncoder()
         return cls._reranker_model
 
 

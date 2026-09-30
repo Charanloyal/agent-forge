@@ -25,10 +25,9 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install -r requirements.txt
 
-# Models will load lazily on first request via ModelRegistry
+# Models load lazily with fallback on first request via ModelRegistry
 
 # ==========================================
 # Stage 2: Final Minimal Runtime Image
@@ -39,7 +38,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PORT=8000 \
+    PORT=10000 \
     HF_HOME="/opt/hf_cache"
 
 WORKDIR /app
@@ -62,9 +61,9 @@ COPY --chown=appuser:appuser app/ /app/app/
 
 USER appuser
 
-EXPOSE 8000
+EXPOSE 10000
 
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8000/healthz || exit 1
+    CMD curl -f http://localhost:10000/healthz || exit 1
 
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
