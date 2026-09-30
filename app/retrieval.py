@@ -5,6 +5,20 @@ import logging
 import threading
 from typing import Any
 try:
+    from rank_bm25 import BM25Okapi
+    HAS_BM25 = True
+except ImportError:
+    HAS_BM25 = False
+    BM25Okapi = None
+
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http import models as qmodels
+from app.config import get_settings
+
+logger = logging.getLogger("agentforge.retrieval")
+settings = get_settings()
+
+try:
     from sentence_transformers import SentenceTransformer, CrossEncoder
     HAS_SENTENCE_TRANSFORMERS = True
 except ImportError:
@@ -151,7 +165,10 @@ class BM25IndexStore:
                     self.tokenized_corpus[idx] = tokenize_text(chunk["content"])
 
             if self.tokenized_corpus:
-                self.bm25_model = BM25Okapi(self.tokenized_corpus)
+                if HAS_BM25 and BM25Okapi is not None:
+                    self.bm25_model = BM25Okapi(self.tokenized_corpus)
+                else:
+                    self.bm25_model = True
                 logger.info("Rebuilt BM25 index with %d total chunks", len(self.chunk_ids))
 
     def search(self, query: str, top_k: int = 15) -> list[dict[str, Any]]:
@@ -166,7 +183,14 @@ class BM25IndexStore:
             if not query_tokens:
                 return []
 
-            scores = self.bm25_model.get_scores(query_tokens)
+            if HAS_BM25 and self.bm25_model is not True and hasattr(self.bm25_model, "get_scores"):
+                scores = self.bm25_model.get_scores(query_tokens)
+            else:
+                q_set = set(query_tokens)
+                scores = []
+                for corpus_tokens in self.tokenized_corpus:
+                    overlap = sum(1 for t in corpus_tokens if t in q_set)
+                    scores.append(float(overlap))
             indexed_scores = [(idx, float(score)) for idx, score in enumerate(scores) if score > 0.0]
             indexed_scores.sort(key=lambda x: x[1], reverse=True)
 
