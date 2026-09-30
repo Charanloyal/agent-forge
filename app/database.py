@@ -55,12 +55,28 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """
-    Idempotent schema initialization: creates all declared tables in PostgreSQL.
+    Idempotent schema initialization: creates all declared tables in PostgreSQL or SQLite fallback.
     """
-    logger.info("Initializing database schema...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database schema initialized successfully.")
+    global engine, async_session_factory
+    logger.info("Initializing database schema with URL: %s", db_url)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database schema initialized successfully.")
+    except Exception as exc:
+        logger.warning("Database initialization failed (%s). Falling back to SQLite.", exc)
+        fallback_url = "sqlite+aiosqlite:///./agentforge.db"
+        engine = create_async_engine(fallback_url, connect_args={"check_same_thread": False})
+        async_session_factory = async_sessionmaker(
+            bind=engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False
+        )
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("SQLite fallback database schema initialized successfully.")
 
 
 async def close_db() -> None:
