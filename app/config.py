@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # PostgreSQL Persistence
+    # PostgreSQL / SQLite Persistence
     POSTGRES_USER: str = Field(default="postgres")
     POSTGRES_PASSWORD: str = Field(default="postgres")
     POSTGRES_HOST: str = Field(default="localhost")
@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     def assemble_db_url(cls, v: str | None, values) -> str:
         if v and len(v.strip()) > 0:
             url_str = v.strip()
+            if url_str.startswith("sqlite"):
+                if not url_str.startswith("sqlite+aiosqlite://"):
+                    url_str = url_str.replace("sqlite://", "sqlite+aiosqlite://", 1)
+                return url_str
             if url_str.startswith("postgres://"):
                 url_str = url_str.replace("postgres://", "postgresql+asyncpg://", 1)
             elif url_str.startswith("postgresql://") and not url_str.startswith("postgresql+asyncpg://"):
@@ -47,6 +51,8 @@ class Settings(BaseSettings):
         host = data.get("POSTGRES_HOST", "localhost")
         port = data.get("POSTGRES_PORT", 5432)
         db = data.get("POSTGRES_DB", "agentforge")
+        if host in ("sqlite", ":memory:") or os.getenv("USE_SQLITE", "").lower() in ("true", "1"):
+            return "sqlite+aiosqlite:///./agentforge.db"
         return f"postgresql+asyncpg://{user}:{pwd}@{host}:{port}/{db}"
 
     # Qdrant Vector DB

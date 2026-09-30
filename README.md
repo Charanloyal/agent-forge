@@ -2,7 +2,9 @@
 
 > **Production-grade Agentic Retrieval-Augmented Generation (RAG) platform featuring automated multi-hop reflection, hybrid sparse/dense retrieval, cross-encoder re-ranking, and a deterministic programmatic evaluation scoring harness.**
 
+[![Live Web Dashboard](https://img.shields.io/badge/Live%20Dashboard-Interactive%20UI-7c3aed.svg?logo=googlechrome&logoColor=white)](https://agent-forge-to4e.onrender.com)
 [![Live API Demo](https://img.shields.io/badge/Live%20API-Open%20Docs-brightgreen.svg?logo=fastapi&logoColor=white)](https://agent-forge-to4e.onrender.com/docs)
+[![PyTest](https://img.shields.io/badge/PyTest-Automated%20Tests-success.svg?logo=pytest&logoColor=white)](https://pytest.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2.0-blue.svg)](https://langchain-ai.github.io/langgraph/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-v1.9.7-DC2626.svg?logo=qdrant&logoColor=white)](https://qdrant.tech)
@@ -441,18 +443,37 @@ agent-forge/
 ├── app/
 │   ├── __init__.py           # Package marker and version definition
 │   ├── config.py             # Pydantic v2 BaseSettings with typed environment overrides
-│   ├── database.py           # Async SQLAlchemy engine, session maker, schema initializer
+│   ├── database.py           # Async SQLAlchemy engine (PostgreSQL/SQLite dual pool)
 │   ├── evaluator.py          # Programmatic metrics: Context Precision, Faithfulness, Relevance
 │   ├── graph.py              # Compiled LangGraph StateGraph with reflection routers
-│   ├── main.py               # FastAPI application with /v1/ingest, /v1/query, /v1/traces
+│   ├── main.py               # FastAPI application with UI mounting, /v1/ingest, /v1/query, /v1/traces
 │   ├── models.py             # Declarative models: DocumentChunk, AgentExecutionTrace, EvaluationMetric
 │   ├── nodes.py              # Strongly-typed AgentState and all 7 concrete agent nodes
-│   └── retrieval.py          # Qdrant client, BM25Okapi, RRF (k=60), and Cross-Encoder reranker
+│   ├── retrieval.py          # Qdrant client, BM25Okapi, RRF (k=60), and Cross-Encoder reranker
+│   └── static/
+│       └── index.html        # Interactive Dark-Mode Agentic RAG Web Dashboard
+├── tests/
+│   ├── __init__.py           # Test package marker
+│   ├── test_api.py           # Integration tests for FastAPI endpoints
+│   ├── test_evaluator.py     # Unit tests for Context Precision, Faithfulness, Relevance
+│   ├── test_nodes.py         # Unit tests for QueryRewriter, RelevanceGrader, Generator
+│   └── test_retrieval.py     # Unit tests for BM25, RRF math, and Cross-Encoder sigmoid
 ├── .env.example              # Template environment configuration
 ├── Dockerfile                # Production multi-stage Docker build with non-root security
 ├── docker-compose.yml        # Orchestration for PostgreSQL, Qdrant, and AgentForge API
+├── render.yaml               # Cloud deployment descriptor for Render web service
 ├── requirements.txt          # Pinned production dependencies
 └── README.md                 # System architecture, Mermaid diagram, benchmarks, API guide
+```
+
+---
+
+## Running Automated Tests
+
+Run the full pytest suite:
+
+```bash
+pytest -v
 ```
 
 ---
@@ -460,4 +481,4 @@ agent-forge/
 ## Engineering Standards & Guarantees
 - **No Stubs or Mock Placeholders**: Every mathematical formula, neural inference step, database query, and agent router is fully implemented.
 - **Strict Data Modeling**: UUID primary keys, explicit indexes on foreign keys, temporal columns, and JSONB document structures.
-- **Asynchronous I/O**: Native non-blocking I/O across database operations (`asyncpg`), vector search (`qdrant-client`), and thread-offloaded CPU-bound neural model executions.
+- **Asynchronous I/O**: Native non-blocking I/O across database operations (`asyncpg`/`aiosqlite`), vector search (`qdrant-client`), and thread-offloaded CPU-bound neural model executions.

@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AgentForge | Enterprise Agentic RAG Platform</title>
+  <!-- Google Fonts & FontAwesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-card-border: rgba(255, 255, 255, 0.08);
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.12) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header Navbar */
+    header {
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(9, 13, 22, 0.8);
+      border-bottom: 1px solid var(--bg-card-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 1rem 2rem;
+    }
+
+    .nav-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.35rem;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-decoration: none;
+    }
+
+    .brand-logo i {
+      color: #60a5fa;
+      -webkit-text-fill-color: initial;
+      font-size: 1.5rem;
+    }
+
+    .nav-badges {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.825rem;
+      font-weight: 500;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .btn-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.5rem;
+    }
+
+    .btn-link:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    /* Hero Header */
+    .hero {
+      text-align: center;
+      max-width: 850px;
+      margin: 0 auto 1rem auto;
+    }
+
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      line-height: 1.6;
+    }
+
+    /* Cards & Layout */
+    .glass-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: var(--glass-shadow);
+      transition: border-color 0.2s ease;
+    }
+
+    .glass-card:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: #f8fafc;
+    }
+
+    .card-title i {
+      color: var(--accent-blue);
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      .grid-2, .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Query Form */
+    .query-input-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    textarea {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.975rem;
+      resize: vertical;
+      min-height: 90px;
+      transition: all 0.2s ease;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .quick-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .tag-label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .sample-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-muted);
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .sample-btn:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+    }
+
+    .action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff;
+      border: none;
+      padding: 0.75rem 1.75rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.35);
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px 0 rgba(37, 99, 235, 0.5);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      border: 1px solid var(--bg-card-border);
+      padding: 0.6rem 1.2rem;
+      border-radius: 0.6rem;
+      font-weight: 500;
+      font-size: 0.875rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Metric Cards */
+    .metric-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 0.85rem;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .metric-value {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .val-precision { color: #60a5fa; }
+    .val-faithfulness { color: #34d399; }
+    .val-relevance { color: #c084fc; }
+
+    .metric-bar-bg {
+      height: 6px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin-top: 0.25rem;
+    }
+
+    .metric-bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Answer Display */
+    .answer-box {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      line-height: 1.7;
+      font-size: 1.025rem;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+    }
+
+    .citation-tag {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 0.1rem 0.4rem;
+      border-radius: 0.3rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .citation-tag:hover {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+
+    /* Timeline Trace */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      position: relative;
+    }
+
+    .timeline-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--bg-card-border);
+      padding: 0.85rem 1rem;
+      border-radius: 0.6rem;
+      transition: all 0.2s ease;
+    }
+
+    .timeline-item:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    .node-index {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .node-info {
+      flex: 1;
+    }
+
+    .node-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .node-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #f1f5f9;
+    }
+
+    .node-latency {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.8rem;
+      color: #a78bfa;
+      background: rgba(139, 92, 246, 0.1);
+      padding: 0.15rem 0.5rem;
+      border-radius: 0.4rem;
+    }
+
+    .node-details {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* Citations Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--bg-card-border);
+    }
+
+    th {
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      color: var(--text-muted);
+    }
+
+    /* Claims list */
+    .claim-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 0.875rem;
+    }
+
+    .claim-badge {
+      padding: 0.15rem 0.5rem;
+      border-radius: 0.3rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .badge-grounded {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-unsupported {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fb7185;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+
+    /* Ingestion Modal / Box */
+    .ingest-box {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .input-group label {
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    input[type="text"] {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.85rem;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
+    /* Loader Spinner */
+    .spinner {
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top: 2px solid #ffffff;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--bg-card-border);
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="nav-container">
+      <a href="/" class="brand-logo">
+        <i class="fa-solid fa-cube-nogit"></i> AgentForge
+      </a>
+      <div class="nav-badges">
+        <div class="status-badge" id="healthBadge">
+          <div class="status-dot"></div> Live API Active
+        </div>
+        <a href="/docs" target="_blank" class="btn-link">
+          <i class="fa-solid fa-book"></i> OpenAPI Docs
+        </a>
+        <a href="https://github.com/Charanloyal/agent-forge" target="_blank" class="btn-link">
+          <i class="fa-brands fa-github"></i> GitHub Repository
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Body -->
+  <main>
+    <!-- Hero Section -->
+    <div class="hero">
+      <h1>Enterprise Agentic RAG Platform</h1>
+      <p>
+        Automated multi-hop reflection, Qdrant dense & BM25 sparse hybrid search with Reciprocal Rank Fusion (k=60), Cross-Encoder re-ranking, and programmatic evaluation metrics.
+      </p>
+    </div>
+
+    <!-- Query Simulator & Metrics -->
+    <div class="grid-2">
+      <!-- Query Panel -->
+      <div class="glass-card">
+        <div class="card-title">
+          <i class="fa-solid fa-terminal"></i> Agentic Query Execution
+        </div>
+        <div class="query-input-wrapper">
+          <textarea id="queryInput" placeholder="Enter technical or multi-hop query..."></textarea>
+          <div class="quick-tags">
+            <span class="tag-label">Samples:</span>
+            <button class="sample-btn" onclick="setQuery('Can you explain how AgentForge fuses dense and sparse search and how traces are stored?')">Hybrid RRF & Traces</button>
+            <button class="sample-btn" onclick="setQuery('How does cross-encoder reranking prune candidate chunks?')">Cross-Encoder Reranking</button>
+            <button class="sample-btn" onclick="setQuery('What programmatic evaluation metrics does AgentForge compute?')">Evaluation Metrics</button>
+          </div>
+          <div class="action-row">
+            <button id="btnQuery" class="btn-primary" onclick="runQuery()">
+              <i class="fa-solid fa-play"></i> Run Agent Pipeline
+            </button>
+            <button class="btn-secondary" onclick="seedDemoDocs()">
+              <i class="fa-solid fa-database"></i> Seed Sample Knowledge
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ingestion Panel -->
+      <div class="glass-card">
+        <div class="card-title">
+          <i class="fa-solid fa-file-import"></i> Document Ingestion (`POST /v1/ingest`)
+        </div>
+        <div class="ingest-box">
+          <div class="input-group">
+            <label>Document ID</label>
+            <input type="text" id="docIdInput" value="arch-spec-01" />
+          </div>
+          <div class="input-group">
+            <label>Document Content</label>
+            <textarea id="docContentInput" style="min-height:75px;" placeholder="Paste raw documentation text..."></textarea>
+          </div>
+          <div class="action-row">
+            <button id="btnIngest" class="btn-secondary" onclick="ingestDocument()">
+              <i class="fa-solid fa-upload"></i> Ingest & Index Document
+            </button>
+            <span id="ingestStatus" style="font-size:0.85rem; color:#34d399;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Evaluation Scores Row -->
+    <div class="grid-3" id="metricsRow">
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Context Precision@K (MAP)</span>
+          <i class="fa-solid fa-bullseye" style="color:#60a5fa;"></i>
+        </div>
+        <div class="metric-value val-precision" id="metricPrecision">--</div>
+        <div class="metric-bar-bg">
+          <div class="metric-bar-fill" id="barPrecision" style="width: 0%; background: #3b82f6;"></div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Faithfulness / Groundedness</span>
+          <i class="fa-solid fa-shield-check" style="color:#34d399;"></i>
+        </div>
+        <div class="metric-value val-faithfulness" id="metricFaithfulness">--</div>
+        <div class="metric-bar-bg">
+          <div class="metric-bar-fill" id="barFaithfulness" style="width: 0%; background: #10b981;"></div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Answer Cosine Relevance</span>
+          <i class="fa-solid fa-compass" style="color:#c084fc;"></i>
+        </div>
+        <div class="metric-value val-relevance" id="metricRelevance">--</div>
+        <div class="metric-bar-bg">
+          <div class="metric-bar-fill" id="barRelevance" style="width: 0%; background: #8b5cf6;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generated Answer & Execution Trace Section -->
+    <div class="grid-2">
+      <!-- Answer Card -->
+      <div class="glass-card">
+        <div class="card-title">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Synthesized Grounded Response
+        </div>
+        <div id="answerDisplay" class="answer-box">
+          Click <strong>"Run Agent Pipeline"</strong> or <strong>"Seed Sample Knowledge"</strong> above to see AgentForge in action.
+        </div>
+
+        <div style="margin-top: 1.5rem;" id="claimsContainer">
+          <div style="font-size: 0.875rem; font-weight:700; color:#cbd5e1; margin-bottom: 0.75rem;">
+            Atomic Claim Verification & Entailment:
+          </div>
+          <div id="claimsList">
+            <span style="font-size:0.85rem; color:var(--text-dim);">No claims evaluated yet.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- LangGraph Trajectory Trace -->
+      <div class="glass-card">
+        <div class="card-title">
+          <i class="fa-solid fa-diagram-project"></i> LangGraph Node Trajectory Audit
+        </div>
+        <div class="timeline" id="traceTimeline">
+          <span style="font-size:0.875rem; color:var(--text-dim);">
+            Execution traces will populate here upon running a query.
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Citations Table Card -->
+    <div class="glass-card">
+      <div class="card-title">
+        <i class="fa-solid fa-quote-left"></i> Retrieved & Cited Source Passages
+      </div>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Document ID</th>
+              <th>Relevance Score</th>
+              <th>Chunk Content Snippet</th>
+            </tr>
+          </thead>
+          <tbody id="citationsTableBody">
+            <tr>
+              <td colspan="4" style="text-align:center; color:var(--text-dim); padding:1.5rem;">
+                No cited passages loaded.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    AgentForge Architecture &copy; 2026. Built with FastAPI, LangGraph, Qdrant, PostgreSQL, & PyTorch.
+  </footer>
+
+  <script>
+    function setQuery(q) {
+      document.getElementById('queryInput').value = q;
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/healthz');
+        const data = await res.json();
+        const badge = document.getElementById('healthBadge');
+        if (data.status === 'healthy') {
+          badge.innerHTML = `<div class="status-dot"></div> Live API Active (${data.bm25_indexed_chunks} Chunks Indexed)`;
+        } else {
+          badge.innerHTML = `<div class="status-dot" style="background:#f59e0b; box-shadow:0 0 8px #f59e0b;"></div> Service Degraded`;
+        }
+      } catch (e) {
+        console.error("Health check error:", e);
+      }
+    }
+
+    async function seedDemoDocs() {
+      const btn = event.target;
+      const origText = btn.innerHTML;
+      btn.innerHTML = `<div class="spinner"></div> Seeding...`;
+      btn.disabled = true;
+
+      const sampleDocs = [
+        {
+          document_id: "arch-doc-01",
+          content: "AgentForge utilizes Reciprocal Rank Fusion (RRF) with constant k=60 to fuse dense vector rankings with sparse BM25 scores. Cross-encoders then re-rank candidate passages using ms-marco-MiniLM model to filter noise.",
+          metadata: { category: "architecture", version: "1.0" }
+        },
+        {
+          document_id: "arch-doc-02",
+          content: "PostgreSQL with asyncpg persists execution traces and evaluation metrics. Step latencies are recorded for end-to-end observability and graph execution auditing.",
+          metadata: { category: "database", version: "1.0" }
+        },
+        {
+          document_id: "arch-doc-03",
+          content: "AgentForge evaluates responses using a deterministic programmatic scoring harness calculating Context Precision (MAP), Faithfulness groundedness ratio, and Answer Cosine Relevance.",
+          metadata: { category: "evaluation", version: "1.0" }
+        }
+      ];
+
+      try {
+        const res = await fetch('/v1/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ documents: sampleDocs })
+        });
+        const data = await res.json();
+        alert(`Successfully ingested ${data.documents_ingested} demo documents into Qdrant & BM25 store!`);
+        checkHealth();
+      } catch (err) {
+        alert("Ingestion error: " + err.message);
+      } finally {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      }
+    }
+
+    async function ingestDocument() {
+      const docId = document.getElementById('docIdInput').value.trim();
+      const content = document.getElementById('docContentInput').value.trim();
+      const statusSpan = document.getElementById('ingestStatus');
+
+      if (!docId || !content) {
+        alert("Please provide both Document ID and Content.");
+        return;
+      }
+
+      statusSpan.innerText = "Ingesting...";
+      try {
+        const res = await fetch('/v1/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documents: [{ document_id: docId, content: content }]
+          })
+        });
+        const data = await res.json();
+        statusSpan.innerText = `Ingested ${data.chunks_created} chunk(s)!`;
+        document.getElementById('docContentInput').value = "";
+        checkHealth();
+      } catch (err) {
+        statusSpan.innerText = "Error ingesting document.";
+      }
+    }
+
+    async function runQuery() {
+      const queryText = document.getElementById('queryInput').value.trim();
+      if (!queryText) {
+        alert("Please enter a query.");
+        return;
+      }
+
+      const btn = document.getElementById('btnQuery');
+      btn.innerHTML = `<div class="spinner"></div> Executing Agent Graph...`;
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/v1/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: queryText })
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
+        }
+
+        const data = await res.json();
+        renderResults(data);
+      } catch (err) {
+        alert("Query execution failed: " + err.message);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-play"></i> Run Agent Pipeline`;
+        btn.disabled = false;
+      }
+    }
+
+    function renderResults(data) {
+      // 1. Answer display
+      let formattedAnswer = data.answer.replace(/\[(\d+)\]/g, '<span class="citation-tag">[$1]</span>');
+      document.getElementById('answerDisplay').innerHTML = formattedAnswer;
+
+      // 2. Metrics display
+      const metrics = data.evaluation_metrics || {};
+      const precision = metrics.context_precision ?? 0;
+      const faithfulness = metrics.faithfulness_score ?? 0;
+      const relevance = metrics.answer_relevance ?? 0;
+
+      document.getElementById('metricPrecision').innerText = (precision * 100).toFixed(1) + "%";
+      document.getElementById('barPrecision').style.width = (precision * 100) + "%";
+
+      document.getElementById('metricFaithfulness').innerText = (faithfulness * 100).toFixed(1) + "%";
+      document.getElementById('barFaithfulness').style.width = (faithfulness * 100) + "%";
+
+      document.getElementById('metricRelevance').innerText = (relevance * 100).toFixed(1) + "%";
+      document.getElementById('barRelevance').style.width = (relevance * 100) + "%";
+
+      // 3. Claims breakdown
+      const claims = metrics.claim_evaluations || [];
+      const claimsList = document.getElementById('claimsList');
+      if (claims.length === 0) {
+        claimsList.innerHTML = `<span style="font-size:0.85rem; color:var(--text-dim);">No distinct atomic claims evaluated.</span>`;
+      } else {
+        claimsList.innerHTML = claims.map(c => `
+          <div class="claim-item">
+            <span class="claim-badge ${c.is_grounded ? 'badge-grounded' : 'badge-unsupported'}">
+              ${c.is_grounded ? 'Grounded' : 'Unsupported'}
+            </span>
+            <span style="color:#e2e8f0; flex:1;">"${c.statement}"</span>
+            <span style="font-family:'Fira Code'; font-size:0.75rem; color:var(--text-dim);">Score: ${c.support_score}</span>
+          </div>
+        `).join('');
+      }
+
+      // 4. Trace Timeline
+      const traces = data.execution_trace || [];
+      const timeline = document.getElementById('traceTimeline');
+      timeline.innerHTML = traces.map(t => `
+        <div class="timeline-item">
+          <div class="node-index">${t.step_index}</div>
+          <div class="node-info">
+            <div class="node-title-row">
+              <span class="node-name">${t.step_name}</span>
+              <span class="node-latency">${t.latency_ms} ms</span>
+            </div>
+            <div class="node-details">
+              In: ${JSON.stringify(t.input_state)} | Out: ${JSON.stringify(t.output_state)}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      // 5. Citations Table
+      const citations = data.citations || [];
+      const tbody = document.getElementById('citationsTableBody');
+      if (citations.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-dim); padding:1.5rem;">No citations returned for this query.</td></tr>`;
+      } else {
+        tbody.innerHTML = citations.map(c => `
+          <tr>
+            <td><span class="citation-tag">[${c.citation_index}]</span></td>
+            <td style="font-family:'Fira Code'; font-size:0.8rem; color:#60a5fa;">${c.document_id}</td>
+            <td style="font-family:'Fira Code'; font-size:0.8rem; color:#34d399;">${c.relevance_score}</td>
+            <td>${c.snippet}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // Run health check on page load
+    window.addEventListener('DOMContentLoaded', checkHealth);
+  </script>
+</body>
+</html>
