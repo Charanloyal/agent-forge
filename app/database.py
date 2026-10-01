@@ -11,22 +11,26 @@ from app.models import Base
 logger = logging.getLogger("agentforge.database")
 settings = get_settings()
 
-db_url = settings.DATABASE_URL or "sqlite+aiosqlite:///./agentforge.db"
-engine_kwargs: dict = {
-    "echo": settings.DEBUG,
-}
+def _make_engine(url: str | None):
+    clean_url = (url or "").strip() or "sqlite+aiosqlite:///./agentforge.db"
+    if clean_url.startswith("sqlite"):
+        if not clean_url.startswith("sqlite+aiosqlite://"):
+            clean_url = clean_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+        return create_async_engine(clean_url, connect_args={"check_same_thread": False})
+    return create_async_engine(
+        clean_url,
+        echo=settings.DEBUG,
+        pool_pre_ping=True,
+        pool_size=20,
+        max_overflow=10,
+        pool_recycle=3600
+    )
 
-if db_url.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-else:
-    engine_kwargs.update({
-        "pool_pre_ping": True,
-        "pool_size": 20,
-        "max_overflow": 10,
-        "pool_recycle": 3600
-    })
-
-engine = create_async_engine(db_url, **engine_kwargs)
+try:
+    engine = _make_engine(settings.DATABASE_URL)
+except Exception as err:
+    logger.warning("Failed to create engine with primary URL (%s). Falling back to SQLite.", err)
+    engine = create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
 
 async_session_factory = async_sessionmaker(
     bind=engine,

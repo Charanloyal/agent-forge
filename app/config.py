@@ -45,15 +45,7 @@ class Settings(BaseSettings):
             elif url_str.startswith("postgresql://") and not url_str.startswith("postgresql+asyncpg://"):
                 url_str = url_str.replace("postgresql://", "postgresql+asyncpg://", 1)
             return url_str
-        data = values.data if hasattr(values, "data") else values
-        host = data.get("POSTGRES_HOST", "localhost")
-        if host in ("localhost", "127.0.0.1", "sqlite", ":memory:") or os.getenv("USE_SQLITE", "").lower() in ("true", "1"):
-            return "sqlite+aiosqlite:///./agentforge.db"
-        user = data.get("POSTGRES_USER", "postgres")
-        pwd = data.get("POSTGRES_PASSWORD", "postgres")
-        port = data.get("POSTGRES_PORT", 5432)
-        db = data.get("POSTGRES_DB", "agentforge")
-        return f"postgresql+asyncpg://{user}:{pwd}@{host}:{port}/{db}"
+        return "sqlite+aiosqlite:///./agentforge.db"
 
     # Qdrant Vector DB
     QDRANT_HOST: str = Field(default="localhost")
