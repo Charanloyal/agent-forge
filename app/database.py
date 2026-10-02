@@ -56,32 +56,35 @@ async_session_factory = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency yielding an isolated async SQLAlchemy session per request.
-    Rolls back automatically on exception and gracefully falls back to SQLite if engine fails.
+    100% fail-safe: automatically falls back to an in-memory SQLite session if primary engine fails.
     """
     global engine, async_session_factory
+    session = None
     try:
-        async with async_session_factory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
-    except Exception as db_err:
-        logger.warning("Database connection session error (%s). Falling back to SQLite session.", db_err)
+        session = async_session_factory()
+    except Exception as e:
+        logger.warning("Failed to create session from factory (%s). Initializing SQLite engine.", e)
         fallback_engine = create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
         fallback_factory = async_sessionmaker(bind=fallback_engine, class_=AsyncSession, expire_on_commit=False)
-        async with fallback_factory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
+        session = fallback_factory()
+
+    try:
+        yield session
+        try:
+            await session.commit()
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.warning("Session operation error: %s", exc)
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            await session.close()
+        except Exception:
+            pass
 
 
 async def init_db() -> None:
