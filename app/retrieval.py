@@ -324,12 +324,23 @@ class QdrantVectorService:
             client = await self.get_client()
             await self.ensure_collection()
 
-            search_results = await client.search(
-                collection_name=settings.QDRANT_COLLECTION,
-                query_vector=query_vector,
-                limit=top_k,
-                with_payload=True
-            )
+            if hasattr(client, "query_points"):
+                response = await client.query_points(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    query=query_vector,
+                    limit=top_k,
+                    with_payload=True
+                )
+                search_results = response.points
+            elif hasattr(client, "search"):
+                search_results = await client.search(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    query_vector=query_vector,
+                    limit=top_k,
+                    with_payload=True
+                )
+            else:
+                search_results = []
 
             results: list[dict[str, Any]] = []
             for rank, hit in enumerate(search_results, start=1):
