@@ -62,7 +62,7 @@ async def init_db() -> None:
     Idempotent schema initialization: creates all declared tables in PostgreSQL or SQLite fallback.
     """
     global engine, async_session_factory
-    logger.info("Initializing database schema with URL: %s", db_url)
+    logger.info("Initializing database schema with URL: %s", settings.DATABASE_URL)
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
