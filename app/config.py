@@ -33,7 +33,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str | None = None
 
     @field_validator("DATABASE_URL", mode="before")
-    def assemble_db_url(cls, v: str | None, values) -> str:
+    def assemble_db_url(cls, v: str | None) -> str:
+        use_sqlite = os.getenv("USE_SQLITE", "false").lower() == "true"
+        if use_sqlite:
+            return "sqlite+aiosqlite:///./agentforge.db"
+
         if v and len(v.strip()) > 0:
             url_str = v.strip()
             if url_str.startswith("sqlite"):

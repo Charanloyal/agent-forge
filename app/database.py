@@ -44,17 +44,32 @@ async_session_factory = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency yielding an isolated async SQLAlchemy session per request.
-    Rolls back automatically on exception and closes gracefully.
+    Rolls back automatically on exception and gracefully falls back to SQLite if engine fails.
     """
-    async with async_session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    global engine, async_session_factory
+    try:
+        async with async_session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+    except Exception as db_err:
+        logger.warning("Database connection session error (%s). Falling back to SQLite session.", db_err)
+        fallback_engine = create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
+        fallback_factory = async_sessionmaker(bind=fallback_engine, class_=AsyncSession, expire_on_commit=False)
+        async with fallback_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
 
 
 async def init_db() -> None:
