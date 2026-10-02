@@ -233,6 +233,7 @@ class QdrantVectorService:
     def __init__(self) -> None:
         self.client: AsyncQdrantClient | None = None
         self._memory_points: list[dict[str, Any]] = []
+        self._is_offline: bool = False
 
     async def get_client(self) -> AsyncQdrantClient:
         if self.client is None:
@@ -242,18 +243,20 @@ class QdrantVectorService:
                 self.client = AsyncQdrantClient(
                     url=settings.QDRANT_HOST,
                     api_key=settings.QDRANT_API_KEY,
-                    timeout=10.0
+                    timeout=1.0
                 )
             else:
                 self.client = AsyncQdrantClient(
                     host=settings.QDRANT_HOST,
                     port=settings.QDRANT_PORT,
                     api_key=settings.QDRANT_API_KEY,
-                    timeout=10.0
+                    timeout=1.0
                 )
         return self.client
 
     async def ensure_collection(self) -> None:
+        if self._is_offline and settings.QDRANT_HOST not in (":memory:", "memory"):
+            return
         try:
             client = await self.get_client()
             collections_response = await client.get_collections()
@@ -268,6 +271,7 @@ class QdrantVectorService:
                     )
                 )
         except Exception as exc:
+            self._is_offline = True
             logger.warning("Qdrant collection setup warning (%s). Using in-memory dense vector fallback.", exc)
 
     async def upsert_chunks(self, chunks: list[dict[str, Any]]) -> None:
@@ -325,6 +329,8 @@ class QdrantVectorService:
         query_vector = raw_emb.tolist() if hasattr(raw_emb, "tolist") else list(raw_emb)
 
         try:
+            if self._is_offline and settings.QDRANT_HOST not in (":memory:", "memory"):
+                raise RuntimeError("Qdrant offline mode active")
             client = await self.get_client()
             await self.ensure_collection()
 
