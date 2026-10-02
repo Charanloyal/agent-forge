@@ -86,15 +86,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
     except Exception as exc:
         logger.warning("Session operation error: %s", exc)
-        try:
-            await session.rollback()
-        except Exception:
-            pass
     finally:
-        try:
-            await session.close()
-        except Exception:
-            pass
+        if session is not None:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            try:
+                await session.close()
+            except Exception:
+                pass
 
 
 async def init_db() -> None:

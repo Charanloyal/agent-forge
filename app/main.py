@@ -326,6 +326,10 @@ async def ingest_documents(payload: IngestRequest, db: AsyncSession = Depends(ge
                 await db.commit()
             except Exception as e:
                 logger.warning("Database persistence warning: %s", e)
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
         response_dict = {
             "status": "success",
