@@ -285,7 +285,7 @@ async def ingest_documents(payload: IngestRequest, db: AsyncSession = Depends(ge
 
                 db_records_to_insert.append(
                     DocumentChunk(
-                        id=chunk_uuid,
+                        id=chunk_id_str,
                         document_id=doc.document_id,
                         chunk_index=idx,
                         content=chunk_text,
@@ -370,7 +370,6 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
     """
     try:
         run_id = str(uuid.uuid4())
-        run_uuid = uuid.UUID(run_id)
 
         # Execute State Machine
         final_state = await run_agent_workflow(query=payload.query, run_id=run_id)
@@ -382,7 +381,8 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
         for t in traces:
             trace_entities.append(
                 AgentExecutionTrace(
-                    run_id=run_uuid,
+                    id=str(uuid.uuid4()),
+                    run_id=run_id,
                     step_name=str(t["step_name"]),
                     step_index=int(t["step_index"]),
                     input_state=sanitize_json_obj(t.get("input_state", {})),
@@ -401,7 +401,8 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
         if eval_scores:
             try:
                 metric_entity = EvaluationMetric(
-                    run_id=run_uuid,
+                    id=str(uuid.uuid4()),
+                    run_id=run_id,
                     query=payload.query,
                     context_precision=float(eval_scores.get("context_precision", 0.0)),
                     faithfulness_score=float(eval_scores.get("faithfulness_score", 0.0)),

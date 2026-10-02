@@ -26,10 +26,10 @@ class DocumentChunk(Base):
     """
     __tablename__ = "document_chunks"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         nullable=False,
     )
     document_id: Mapped[str] = mapped_column(
@@ -80,14 +80,14 @@ class AgentExecutionTrace(Base):
     """
     __tablename__ = "agent_execution_traces"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         nullable=False
     )
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    run_id: Mapped[str] = mapped_column(
+        String(36),
         index=True,
         nullable=False,
         comment="Unique identifier for the entire end-to-end query run"
@@ -139,14 +139,14 @@ class EvaluationMetric(Base):
     """
     __tablename__ = "evaluation_metrics"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         nullable=False
     )
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    run_id: Mapped[str] = mapped_column(
+        String(36),
         index=True,
         unique=True,
         nullable=False,
