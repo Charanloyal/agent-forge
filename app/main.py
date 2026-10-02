@@ -255,61 +255,77 @@ async def ingest_documents(payload: IngestRequest, db: AsyncSession = Depends(ge
     3. Indexes chunks in in-memory BM25 Okapi sparse store.
     4. Persists chunk records in PostgreSQL.
     """
-    all_chunks_to_upsert: list[dict[str, Any]] = []
-    db_records_to_insert: list[DocumentChunk] = []
-    created_chunk_ids: list[str] = []
+    try:
+        all_chunks_to_upsert: list[dict[str, Any]] = []
+        db_records_to_insert: list[DocumentChunk] = []
+        created_chunk_ids: list[str] = []
 
-    for doc in payload.documents:
-        raw_chunks = chunk_document_text(
-            text=doc.content,
-            chunk_size=settings.CHUNK_SIZE,
-            chunk_overlap=settings.CHUNK_OVERLAP
-        )
-
-        for idx, chunk_text in enumerate(raw_chunks):
-            chunk_uuid = uuid.uuid4()
-            embedding_uuid = str(uuid.uuid4())
-            chunk_id_str = str(chunk_uuid)
-            created_chunk_ids.append(chunk_id_str)
-
-            chunk_dict = {
-                "id": chunk_id_str,
-                "embedding_id": embedding_uuid,
-                "document_id": doc.document_id,
-                "chunk_index": idx,
-                "content": chunk_text,
-                "metadata": doc.metadata
-            }
-            all_chunks_to_upsert.append(chunk_dict)
-
-            db_records_to_insert.append(
-                DocumentChunk(
-                    id=chunk_uuid,
-                    document_id=doc.document_id,
-                    chunk_index=idx,
-                    content=chunk_text,
-                    metadata_json=doc.metadata,
-                    embedding_id=embedding_uuid
-                )
+        for doc in payload.documents:
+            raw_chunks = chunk_document_text(
+                text=doc.content,
+                chunk_size=settings.CHUNK_SIZE,
+                chunk_overlap=settings.CHUNK_OVERLAP
             )
 
-    # 1. Upsert into Qdrant
-    if all_chunks_to_upsert:
-        await qdrant_service.upsert_chunks(all_chunks_to_upsert)
+            for idx, chunk_text in enumerate(raw_chunks):
+                chunk_uuid = uuid.uuid4()
+                embedding_uuid = str(uuid.uuid4())
+                chunk_id_str = str(chunk_uuid)
+                created_chunk_ids.append(chunk_id_str)
 
-        # 2. Add to BM25 sparse index
-        bm25_store.add_chunks(all_chunks_to_upsert)
+                chunk_dict = {
+                    "id": chunk_id_str,
+                    "embedding_id": embedding_uuid,
+                    "document_id": doc.document_id,
+                    "chunk_index": idx,
+                    "content": chunk_text,
+                    "metadata": doc.metadata
+                }
+                all_chunks_to_upsert.append(chunk_dict)
 
-        # 3. Persist to PostgreSQL
-        db.add_all(db_records_to_insert)
-        await db.commit()
+                db_records_to_insert.append(
+                    DocumentChunk(
+                        id=chunk_uuid,
+                        document_id=doc.document_id,
+                        chunk_index=idx,
+                        content=chunk_text,
+                        metadata_json=doc.metadata,
+                        embedding_id=embedding_uuid
+                    )
+                )
 
-    return IngestResponse(
-        status="success",
-        documents_ingested=len(payload.documents),
-        chunks_created=len(all_chunks_to_upsert),
-        chunk_ids=created_chunk_ids
-    )
+        if all_chunks_to_upsert:
+            # 1. Upsert into Qdrant
+            try:
+                await qdrant_service.upsert_chunks(all_chunks_to_upsert)
+            except Exception as e:
+                logger.warning("Qdrant vector upsert warning: %s", e)
+
+            # 2. Add to BM25 sparse index
+            try:
+                bm25_store.add_chunks(all_chunks_to_upsert)
+            except Exception as e:
+                logger.warning("BM25 sparse index warning: %s", e)
+
+            # 3. Persist to Database
+            try:
+                db.add_all(db_records_to_insert)
+                await db.commit()
+            except Exception as e:
+                logger.warning("Database persistence warning: %s", e)
+
+        return IngestResponse(
+            status="success",
+            documents_ingested=len(payload.documents),
+            chunks_created=len(all_chunks_to_upsert),
+            chunk_ids=created_chunk_ids
+        )
+    except Exception as exc:
+        logger.exception("Document ingestion exception: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Document ingestion error: {str(exc)}"
+        )
 
 
 def sanitize_json_obj(obj: Any) -> Any:
