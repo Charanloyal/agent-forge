@@ -140,6 +140,22 @@ if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+@app.middleware("http")
+async def catch_all_exceptions_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        import traceback
+        logger.exception("Middleware caught exception: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(exc),
+                "traceback": traceback.format_exc()
+            }
+        )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import traceback
