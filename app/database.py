@@ -48,7 +48,6 @@ async_session_factory = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
-    autocommit=False,
     autoflush=False
 )
 
@@ -105,7 +104,6 @@ async def init_db() -> None:
             bind=engine,
             class_=AsyncSession,
             expire_on_commit=False,
-            autocommit=False,
             autoflush=False
         )
         async with engine.begin() as conn:
