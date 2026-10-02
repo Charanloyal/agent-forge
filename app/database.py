@@ -12,7 +12,7 @@ logger = logging.getLogger("agentforge.database")
 settings = get_settings()
 
 def _make_engine(url: str | None):
-    import os
+    import os, json
     clean_url = (url or "").strip()
     use_sqlite = (
         os.getenv("USE_SQLITE", "true").lower() == "true"
@@ -21,7 +21,12 @@ def _make_engine(url: str | None):
     )
     if use_sqlite or clean_url.startswith("sqlite"):
         logger.info("Using SQLite async engine for persistence.")
-        return create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
+        return create_async_engine(
+            "sqlite+aiosqlite:///./agentforge.db",
+            connect_args={"check_same_thread": False},
+            json_serializer=lambda obj: json.dumps(obj, default=str),
+            json_deserializer=json.loads
+        )
 
     if clean_url.startswith("postgres://"):
         clean_url = clean_url.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -35,7 +40,9 @@ def _make_engine(url: str | None):
         pool_pre_ping=True,
         pool_size=20,
         max_overflow=10,
-        pool_recycle=3600
+        pool_recycle=3600,
+        json_serializer=lambda obj: json.dumps(obj, default=str),
+        json_deserializer=json.loads
     )
 
 try:
@@ -63,7 +70,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         session = async_session_factory()
     except Exception as e:
         logger.warning("Failed to create session from factory (%s). Initializing SQLite engine.", e)
-        fallback_engine = create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
+        fallback_engine = create_async_engine(
+            "sqlite+aiosqlite:///./agentforge.db",
+            connect_args={"check_same_thread": False},
+            json_serializer=lambda obj: json.dumps(obj, default=str),
+            json_deserializer=json.loads
+        )
         fallback_factory = async_sessionmaker(bind=fallback_engine, class_=AsyncSession, expire_on_commit=False)
         session = fallback_factory()
 
@@ -99,7 +111,12 @@ async def init_db() -> None:
     except Exception as exc:
         logger.warning("Database initialization failed (%s). Falling back to SQLite.", exc)
         fallback_url = "sqlite+aiosqlite:///./agentforge.db"
-        engine = create_async_engine(fallback_url, connect_args={"check_same_thread": False})
+        engine = create_async_engine(
+            fallback_url,
+            connect_args={"check_same_thread": False},
+            json_serializer=lambda obj: json.dumps(obj, default=str),
+            json_deserializer=json.loads
+        )
         async_session_factory = async_sessionmaker(
             bind=engine,
             class_=AsyncSession,
