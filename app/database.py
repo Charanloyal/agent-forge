@@ -81,10 +81,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
     try:
         yield session
-        try:
-            await session.commit()
-        except Exception:
-            pass
     except Exception as exc:
         logger.warning("Session operation error: %s", exc)
         try:

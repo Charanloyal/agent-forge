@@ -4,7 +4,7 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -138,6 +138,19 @@ app.add_middleware(
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    logger.exception("Global exception caught: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Internal server error: {str(exc)}",
+            "traceback": traceback.format_exc()
+        }
+    )
 
 
 @app.get("/", include_in_schema=False)
@@ -314,17 +327,22 @@ async def ingest_documents(payload: IngestRequest, db: AsyncSession = Depends(ge
             except Exception as e:
                 logger.warning("Database persistence warning: %s", e)
 
-        return IngestResponse(
-            status="success",
-            documents_ingested=len(payload.documents),
-            chunks_created=len(all_chunks_to_upsert),
-            chunk_ids=created_chunk_ids
-        )
+        response_dict = {
+            "status": "success",
+            "documents_ingested": len(payload.documents),
+            "chunks_created": len(all_chunks_to_upsert),
+            "chunk_ids": created_chunk_ids
+        }
+        return JSONResponse(content=sanitize_json_obj(response_dict))
     except Exception as exc:
         logger.exception("Document ingestion exception: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document ingestion error: {str(exc)}"
+        import traceback
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Document ingestion error: {str(exc)}",
+                "traceback": traceback.format_exc()
+            }
         )
 
 
@@ -388,11 +406,10 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
 
         final_state = sanitize_json_obj(final_state)
 
-        # Persist Execution Traces
-        traces = final_state.get("traces", [])
-        trace_entities: list[AgentExecutionTrace] = []
-        for t in traces:
-            trace_entities.append(
+        # Persist Execution Traces & Evaluation Metrics
+        try:
+            traces = final_state.get("traces", [])
+            trace_entities: list[AgentExecutionTrace] = [
                 AgentExecutionTrace(
                     id=str(uuid.uuid4()),
                     run_id=run_id,
@@ -402,17 +419,13 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
                     output_state=sanitize_json_obj(t.get("output_state", {})),
                     latency_ms=float(t.get("latency_ms", 0.0))
                 )
-            )
-        if trace_entities:
-            try:
+                for t in traces
+            ]
+            if trace_entities:
                 db.add_all(trace_entities)
-            except Exception as e:
-                logger.warning("Trace entity persistence warning: %s", e)
 
-        # Persist Evaluation Metrics
-        eval_scores = sanitize_json_obj(final_state.get("evaluation_scores", {}))
-        if eval_scores:
-            try:
+            eval_scores = sanitize_json_obj(final_state.get("evaluation_scores", {}))
+            if eval_scores:
                 metric_entity = EvaluationMetric(
                     id=str(uuid.uuid4()),
                     run_id=run_id,
@@ -423,13 +436,14 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
                     evaluation_details=eval_scores
                 )
                 db.add(metric_entity)
-            except Exception as e:
-                logger.warning("Metric entity persistence warning: %s", e)
 
-        try:
             await db.commit()
-        except Exception as e:
-            logger.warning("DB commit warning: %s", e)
+        except Exception as db_err:
+            logger.warning("Database persistence warning in query endpoint: %s", db_err)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
         # Format Citations & Traces
         raw_citations = final_state.get("citations", [])
