@@ -1,3 +1,4 @@
+import os
 import re
 import math
 import uuid
@@ -82,8 +83,9 @@ class FastCrossEncoder:
 
 class ModelRegistry:
     """
-    Thread-safe lazy-loading singleton for local neural models
-    (Dense Embedder & Cross-Encoder Reranker).
+    Thread-safe lazy-loading singleton for local models.
+    Defaults to lightweight zero-OOM fast feature embedder & cross-encoder unless
+    USE_HEAVY_MODELS=true is explicitly set in environment.
     """
     _embedding_model: Any = None
     _reranker_model: Any = None
@@ -94,17 +96,18 @@ class ModelRegistry:
         if cls._embedding_model is None:
             with cls._lock:
                 if cls._embedding_model is None:
-                    if HAS_SENTENCE_TRANSFORMERS:
+                    use_heavy = os.getenv("USE_HEAVY_MODELS", "false").lower() == "true"
+                    if use_heavy and HAS_SENTENCE_TRANSFORMERS:
                         try:
                             import torch
                             torch.set_num_threads(1)
-                            logger.info("Loading dense embedding model: %s", settings.EMBEDDING_MODEL_NAME)
+                            logger.info("Loading heavy dense embedding model: %s", settings.EMBEDDING_MODEL_NAME)
                             cls._embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
                         except Exception as exc:
                             logger.warning("Could not load SentenceTransformer (%s). Using FastFeatureEmbedder fallback.", exc)
                             cls._embedding_model = FastFeatureEmbedder(dim=settings.EMBEDDING_DIMENSION)
                     else:
-                        logger.info("SentenceTransformers not installed. Using FastFeatureEmbedder fallback.")
+                        logger.info("Using zero-OOM FastFeatureEmbedder.")
                         cls._embedding_model = FastFeatureEmbedder(dim=settings.EMBEDDING_DIMENSION)
         return cls._embedding_model
 
@@ -113,15 +116,16 @@ class ModelRegistry:
         if cls._reranker_model is None:
             with cls._lock:
                 if cls._reranker_model is None:
-                    if HAS_SENTENCE_TRANSFORMERS:
+                    use_heavy = os.getenv("USE_HEAVY_MODELS", "false").lower() == "true"
+                    if use_heavy and HAS_SENTENCE_TRANSFORMERS:
                         try:
-                            logger.info("Loading cross-encoder reranker model: %s", settings.RERANKER_MODEL_NAME)
+                            logger.info("Loading heavy cross-encoder reranker model: %s", settings.RERANKER_MODEL_NAME)
                             cls._reranker_model = CrossEncoder(settings.RERANKER_MODEL_NAME)
                         except Exception as exc:
                             logger.warning("Could not load CrossEncoder (%s). Using FastCrossEncoder fallback.", exc)
                             cls._reranker_model = FastCrossEncoder()
                     else:
-                        logger.info("SentenceTransformers not installed. Using FastCrossEncoder fallback.")
+                        logger.info("Using zero-OOM FastCrossEncoder.")
                         cls._reranker_model = FastCrossEncoder()
         return cls._reranker_model
 
