@@ -353,7 +353,7 @@ async def ingest_documents(payload: IngestRequest, db: AsyncSession = Depends(ge
             "chunks_created": len(all_chunks_to_upsert),
             "chunk_ids": created_chunk_ids
         }
-        return JSONResponse(content=sanitize_json_obj(response_dict))
+        return JSONResponse(status_code=status.HTTP_201_CREATED, content=sanitize_json_obj(response_dict))
     except Exception as exc:
         logger.exception("Document ingestion exception: %s", exc)
         import traceback
@@ -501,7 +501,7 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
             "iterations": int(final_state.get("iterations", 0))
         }
 
-        return JSONResponse(content=sanitize_json_obj(response_dict))
+        return JSONResponse(status_code=status.HTTP_200_OK, content=sanitize_json_obj(response_dict))
     except Exception as exc:
         logger.exception("Error executing RAG query: %s", exc)
         import traceback
