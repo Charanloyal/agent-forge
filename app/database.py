@@ -12,11 +12,23 @@ logger = logging.getLogger("agentforge.database")
 settings = get_settings()
 
 def _make_engine(url: str | None):
-    clean_url = (url or "").strip() or "sqlite+aiosqlite:///./agentforge.db"
-    if clean_url.startswith("sqlite"):
-        if not clean_url.startswith("sqlite+aiosqlite://"):
-            clean_url = clean_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
-        return create_async_engine(clean_url, connect_args={"check_same_thread": False})
+    import os
+    clean_url = (url or "").strip()
+    use_sqlite = (
+        os.getenv("USE_SQLITE", "true").lower() == "true"
+        or "localhost" in clean_url
+        or not clean_url
+    )
+    if use_sqlite or clean_url.startswith("sqlite"):
+        logger.info("Using SQLite async engine for persistence.")
+        return create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
+
+    if clean_url.startswith("postgres://"):
+        clean_url = clean_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif clean_url.startswith("postgresql://") and not clean_url.startswith("postgresql+asyncpg://"):
+        clean_url = clean_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    logger.info("Using PostgreSQL async engine for persistence.")
     return create_async_engine(
         clean_url,
         echo=settings.DEBUG,
