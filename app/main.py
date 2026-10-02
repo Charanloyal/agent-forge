@@ -372,7 +372,20 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
         run_id = str(uuid.uuid4())
 
         # Execute State Machine
-        final_state = await run_agent_workflow(query=payload.query, run_id=run_id)
+        try:
+            final_state = await run_agent_workflow(query=payload.query, run_id=run_id)
+        except Exception as workflow_err:
+            logger.exception("run_agent_workflow exception: %s", workflow_err)
+            import traceback
+            tb_str = traceback.format_exc()
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "detail": f"Workflow error: {str(workflow_err)}",
+                    "traceback": tb_str
+                }
+            )
+
         final_state = sanitize_json_obj(final_state)
 
         # Persist Execution Traces
@@ -457,9 +470,13 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
         return JSONResponse(content=sanitize_json_obj(response_dict))
     except Exception as exc:
         logger.exception("Error executing RAG query: %s", exc)
+        import traceback
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Query execution error: {str(exc)}"}
+            content={
+                "detail": f"Query execution error: {str(exc)}",
+                "traceback": traceback.format_exc()
+            }
         )
 
 
