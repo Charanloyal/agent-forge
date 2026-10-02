@@ -34,9 +34,10 @@ class Settings(BaseSettings):
 
     @field_validator("DATABASE_URL", mode="before")
     def assemble_db_url(cls, v: str | None) -> str:
+        default_sqlite = f"sqlite+aiosqlite:///{'./agentforge.db' if os.name == 'nt' else '/tmp/agentforge.db'}"
         use_sqlite = os.getenv("USE_SQLITE", "true").lower() == "true" or not v or "localhost" in (v or "")
         if use_sqlite:
-            return "sqlite+aiosqlite:///./agentforge.db"
+            return default_sqlite
 
         if v and len(v.strip()) > 0:
             url_str = v.strip()
@@ -49,7 +50,7 @@ class Settings(BaseSettings):
             elif url_str.startswith("postgresql://") and not url_str.startswith("postgresql+asyncpg://"):
                 url_str = url_str.replace("postgresql://", "postgresql+asyncpg://", 1)
             return url_str
-        return "sqlite+aiosqlite:///./agentforge.db"
+        return default_sqlite
 
     # Qdrant Vector DB
     QDRANT_HOST: str = Field(default="localhost")

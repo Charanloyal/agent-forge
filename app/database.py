@@ -1,3 +1,5 @@
+import os
+import json
 import logging
 from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import (
@@ -11,8 +13,9 @@ from app.models import Base
 logger = logging.getLogger("agentforge.database")
 settings = get_settings()
 
+DEFAULT_SQLITE_URL = f"sqlite+aiosqlite:///{'./agentforge.db' if os.name == 'nt' else '/tmp/agentforge.db'}"
+
 def _make_engine(url: str | None):
-    import os, json
     clean_url = (url or "").strip()
     use_sqlite = (
         os.getenv("USE_SQLITE", "true").lower() == "true"
@@ -20,9 +23,9 @@ def _make_engine(url: str | None):
         or not clean_url
     )
     if use_sqlite or clean_url.startswith("sqlite"):
-        logger.info("Using SQLite async engine for persistence.")
+        logger.info("Using SQLite async engine for persistence (%s).", DEFAULT_SQLITE_URL)
         return create_async_engine(
-            "sqlite+aiosqlite:///./agentforge.db",
+            DEFAULT_SQLITE_URL,
             connect_args={"check_same_thread": False},
             json_serializer=lambda obj: json.dumps(obj, default=str),
             json_deserializer=json.loads
@@ -49,7 +52,7 @@ try:
     engine = _make_engine(settings.DATABASE_URL)
 except Exception as err:
     logger.warning("Failed to create engine with primary URL (%s). Falling back to SQLite.", err)
-    engine = create_async_engine("sqlite+aiosqlite:///./agentforge.db", connect_args={"check_same_thread": False})
+    engine = create_async_engine(DEFAULT_SQLITE_URL, connect_args={"check_same_thread": False})
 
 async_session_factory = async_sessionmaker(
     bind=engine,
@@ -71,7 +74,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     except Exception as e:
         logger.warning("Failed to create session from factory (%s). Initializing SQLite engine.", e)
         fallback_engine = create_async_engine(
-            "sqlite+aiosqlite:///./agentforge.db",
+            DEFAULT_SQLITE_URL,
             connect_args={"check_same_thread": False},
             json_serializer=lambda obj: json.dumps(obj, default=str),
             json_deserializer=json.loads
@@ -106,9 +109,8 @@ async def init_db() -> None:
         logger.info("Database schema initialized successfully.")
     except Exception as exc:
         logger.warning("Database initialization failed (%s). Falling back to SQLite.", exc)
-        fallback_url = "sqlite+aiosqlite:///./agentforge.db"
         engine = create_async_engine(
-            fallback_url,
+            DEFAULT_SQLITE_URL,
             connect_args={"check_same_thread": False},
             json_serializer=lambda obj: json.dumps(obj, default=str),
             json_deserializer=json.loads
