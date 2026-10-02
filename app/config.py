@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     def assemble_db_url(cls, v: str | None) -> str:
         default_sqlite = f"sqlite+aiosqlite:///{'./agentforge.db' if os.name == 'nt' else '/tmp/agentforge.db'}"
-        use_sqlite = os.getenv("USE_SQLITE", "true").lower() == "true" or not v or "localhost" in (v or "")
-        if use_sqlite:
+        use_postgres = os.getenv("USE_POSTGRES", "false").lower() == "true"
+        if not use_postgres:
             return default_sqlite
 
         if v and len(v.strip()) > 0:

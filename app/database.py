@@ -17,12 +17,8 @@ DEFAULT_SQLITE_URL = f"sqlite+aiosqlite:///{'./agentforge.db' if os.name == 'nt'
 
 def _make_engine(url: str | None):
     clean_url = (url or "").strip()
-    use_sqlite = (
-        os.getenv("USE_SQLITE", "true").lower() == "true"
-        or "localhost" in clean_url
-        or not clean_url
-    )
-    if use_sqlite or clean_url.startswith("sqlite"):
+    use_postgres = os.getenv("USE_POSTGRES", "false").lower() == "true"
+    if not use_postgres or clean_url.startswith("sqlite") or not clean_url:
         logger.info("Using SQLite async engine for persistence (%s).", DEFAULT_SQLITE_URL)
         return create_async_engine(
             DEFAULT_SQLITE_URL,
