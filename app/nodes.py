@@ -385,7 +385,11 @@ class EvaluationNode:
             0.45
         )
 
-        scores_dict = evaluation_result.model_dump()
+        scores_dict = (
+            evaluation_result.model_dump()
+            if hasattr(evaluation_result, "model_dump")
+            else evaluation_result.dict()
+        )
         elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         step_trace = {
