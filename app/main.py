@@ -79,8 +79,15 @@ async def lifespan(app: FastAPI):
     Initializes PostgreSQL tables, verifies Qdrant collection, and rebuilds BM25 index.
     """
     logger.info("Starting up AgentForge...")
-    await init_db()
-    await qdrant_service.ensure_collection()
+    try:
+        await init_db()
+    except Exception as exc:
+        logger.warning("Database initialization warning: %s", exc)
+
+    try:
+        await qdrant_service.ensure_collection()
+    except Exception as exc:
+        logger.warning("Qdrant collection setup warning: %s", exc)
 
     # Hydrate in-memory BM25 index from persistent PostgreSQL chunks
     try:

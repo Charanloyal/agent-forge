@@ -223,10 +223,12 @@ bm25_store = BM25IndexStore()
 
 class QdrantVectorService:
     """
-    Async client service for managing dense embeddings and vector storage in Qdrant.
+    Async client service for managing dense embeddings and vector storage in Qdrant,
+    with automatic in-memory vector storage fallback when cluster is offline.
     """
     def __init__(self) -> None:
         self.client: AsyncQdrantClient | None = None
+        self._memory_points: list[dict[str, Any]] = []
 
     async def get_client(self) -> AsyncQdrantClient:
         if self.client is None:
@@ -246,91 +248,136 @@ class QdrantVectorService:
         return self.client
 
     async def ensure_collection(self) -> None:
-        client = await self.get_client()
-        collections_response = await client.get_collections()
-        existing = [c.name for c in collections_response.collections]
-        if settings.QDRANT_COLLECTION not in existing:
-            logger.info("Creating Qdrant collection: %s", settings.QDRANT_COLLECTION)
-            await client.create_collection(
-                collection_name=settings.QDRANT_COLLECTION,
-                vectors_config=qmodels.VectorParams(
-                    size=settings.EMBEDDING_DIMENSION,
-                    distance=qmodels.Distance.COSINE
+        try:
+            client = await self.get_client()
+            collections_response = await client.get_collections()
+            existing = [c.name for c in collections_response.collections]
+            if settings.QDRANT_COLLECTION not in existing:
+                logger.info("Creating Qdrant collection: %s", settings.QDRANT_COLLECTION)
+                await client.create_collection(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    vectors_config=qmodels.VectorParams(
+                        size=settings.EMBEDDING_DIMENSION,
+                        distance=qmodels.Distance.COSINE
+                    )
                 )
-            )
+        except Exception as exc:
+            logger.warning("Qdrant collection setup warning (%s). Using in-memory dense vector fallback.", exc)
 
     async def upsert_chunks(self, chunks: list[dict[str, Any]]) -> None:
-        """
-        Embeds chunks using SentenceTransformer and upserts into Qdrant.
-        """
         if not chunks:
             return
-
-        client = await self.get_client()
-        await self.ensure_collection()
 
         model = ModelRegistry.get_embedding_model()
         contents = [c["content"] for c in chunks]
         embeddings = model.encode(contents, normalize_embeddings=True, show_progress_bar=False)
 
-        points = []
-        for chunk, emb in zip(chunks, embeddings):
-            point_id = str(chunk.get("embedding_id") or chunk.get("id") or uuid.uuid4())
-            points.append(
-                qmodels.PointStruct(
-                    id=point_id,
-                    vector=emb.tolist(),
-                    payload={
-                        "chunk_id": str(chunk["id"]),
-                        "document_id": chunk["document_id"],
-                        "chunk_index": chunk["chunk_index"],
-                        "content": chunk["content"],
-                        "metadata": chunk.get("metadata", {})
-                    }
-                )
-            )
+        try:
+            client = await self.get_client()
+            await self.ensure_collection()
 
-        await client.upsert(
-            collection_name=settings.QDRANT_COLLECTION,
-            points=points,
-            wait=True
-        )
-        logger.info("Upserted %d points to Qdrant collection %s", len(points), settings.QDRANT_COLLECTION)
+            points = []
+            for chunk, emb in zip(chunks, embeddings):
+                point_id = str(chunk.get("embedding_id") or chunk.get("id") or uuid.uuid4())
+                emb_list = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+                points.append(
+                    qmodels.PointStruct(
+                        id=point_id,
+                        vector=emb_list,
+                        payload={
+                            "chunk_id": str(chunk["id"]),
+                            "document_id": chunk["document_id"],
+                            "chunk_index": chunk["chunk_index"],
+                            "content": chunk["content"],
+                            "metadata": chunk.get("metadata", {})
+                        }
+                    )
+                )
+
+            await client.upsert(
+                collection_name=settings.QDRANT_COLLECTION,
+                points=points,
+                wait=True
+            )
+            logger.info("Upserted %d points to Qdrant collection %s", len(points), settings.QDRANT_COLLECTION)
+        except Exception as exc:
+            logger.warning("Qdrant upsert failed (%s). Upserting to in-memory vector store.", exc)
+            for chunk, emb in zip(chunks, embeddings):
+                emb_list = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+                self._memory_points.append({
+                    "id": str(chunk.get("id", "")),
+                    "document_id": chunk.get("document_id", ""),
+                    "chunk_index": chunk.get("chunk_index", 0),
+                    "content": chunk.get("content", ""),
+                    "metadata": chunk.get("metadata", {}),
+                    "vector": emb_list
+                })
 
     async def search_dense(self, query: str, top_k: int = 15) -> list[dict[str, Any]]:
-        """
-        Dense vector semantic similarity search using cosine distance in Qdrant.
-        """
-        client = await self.get_client()
-        await self.ensure_collection()
-
         model = ModelRegistry.get_embedding_model()
-        query_vector = model.encode(query, normalize_embeddings=True, show_progress_bar=False).tolist()
+        raw_emb = model.encode(query, normalize_embeddings=True, show_progress_bar=False)
+        query_vector = raw_emb.tolist() if hasattr(raw_emb, "tolist") else list(raw_emb)
 
-        search_results = await client.search(
-            collection_name=settings.QDRANT_COLLECTION,
-            query_vector=query_vector,
-            limit=top_k,
-            with_payload=True
-        )
+        try:
+            client = await self.get_client()
+            await self.ensure_collection()
 
-        results: list[dict[str, Any]] = []
-        for rank, hit in enumerate(search_results, start=1):
-            payload = hit.payload or {}
-            results.append({
-                "id": payload.get("chunk_id", str(hit.id)),
-                "document_id": payload.get("document_id", ""),
-                "chunk_index": payload.get("chunk_index", 0),
-                "content": payload.get("content", ""),
-                "metadata": payload.get("metadata", {}),
-                "dense_score": float(hit.score),
-                "dense_rank": rank
-            })
-        return results
+            search_results = await client.search(
+                collection_name=settings.QDRANT_COLLECTION,
+                query_vector=query_vector,
+                limit=top_k,
+                with_payload=True
+            )
+
+            results: list[dict[str, Any]] = []
+            for rank, hit in enumerate(search_results, start=1):
+                payload = hit.payload or {}
+                results.append({
+                    "id": payload.get("chunk_id", str(hit.id)),
+                    "document_id": payload.get("document_id", ""),
+                    "chunk_index": payload.get("chunk_index", 0),
+                    "content": payload.get("content", ""),
+                    "metadata": payload.get("metadata", {}),
+                    "dense_score": float(hit.score),
+                    "dense_rank": rank
+                })
+            return results
+        except Exception as exc:
+            logger.warning("Qdrant dense search failed (%s). Using in-memory vector similarity search.", exc)
+            if not self._memory_points:
+                return []
+
+            import numpy as np
+            q_vec = np.array(query_vector, dtype=np.float32)
+            q_norm = np.linalg.norm(q_vec)
+
+            scored = []
+            for item in self._memory_points:
+                i_vec = np.array(item["vector"], dtype=np.float32)
+                i_norm = np.linalg.norm(i_vec)
+                score = float(np.dot(q_vec, i_vec) / (q_norm * i_norm)) if (q_norm > 0 and i_norm > 0) else 0.0
+                scored.append((item, score))
+
+            scored.sort(key=lambda x: x[1], reverse=True)
+            results = []
+            for rank, (item, score) in enumerate(scored[:top_k], start=1):
+                results.append({
+                    "id": item["id"],
+                    "document_id": item["document_id"],
+                    "chunk_index": item["chunk_index"],
+                    "content": item["content"],
+                    "metadata": item["metadata"],
+                    "dense_score": score,
+                    "dense_rank": rank
+                })
+            return results
 
     async def close(self) -> None:
         if self.client is not None:
-            await self.client.close()
+            try:
+                await self.client.close()
+            except Exception:
+                pass
             self.client = None
 
 
