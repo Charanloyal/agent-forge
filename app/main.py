@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -418,46 +418,48 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
         except Exception as e:
             logger.warning("DB commit warning: %s", e)
 
-        # Format Citations
+        # Format Citations & Traces
         raw_citations = final_state.get("citations", [])
         formatted_citations = [
-            CitationItem(
-                citation_index=int(c["citation_index"]),
-                chunk_id=str(c["chunk_id"]),
-                document_id=str(c["document_id"]),
-                relevance_score=float(c["relevance_score"]),
-                snippet=str(c["snippet"]),
-                metadata=sanitize_json_obj(c.get("metadata", {}))
-            )
+            {
+                "citation_index": int(c["citation_index"]),
+                "chunk_id": str(c["chunk_id"]),
+                "document_id": str(c["document_id"]),
+                "relevance_score": float(c["relevance_score"]),
+                "snippet": str(c["snippet"]),
+                "metadata": sanitize_json_obj(c.get("metadata", {}))
+            }
             for c in raw_citations
         ]
 
         formatted_traces = [
-            TraceStep(
-                step_name=str(t["step_name"]),
-                step_index=int(t["step_index"]),
-                input_state=sanitize_json_obj(t.get("input_state", {})),
-                output_state=sanitize_json_obj(t.get("output_state", {})),
-                latency_ms=float(t.get("latency_ms", 0.0))
-            )
+            {
+                "step_name": str(t["step_name"]),
+                "step_index": int(t["step_index"]),
+                "input_state": sanitize_json_obj(t.get("input_state", {})),
+                "output_state": sanitize_json_obj(t.get("output_state", {})),
+                "latency_ms": float(t.get("latency_ms", 0.0))
+            }
             for t in traces
         ]
 
-        return QueryResponse(
-            run_id=run_id,
-            query=payload.query,
-            rewritten_query=str(final_state.get("rewritten_query", "")),
-            answer=str(final_state.get("generation", "")),
-            citations=formatted_citations,
-            evaluation_metrics=eval_scores,
-            execution_trace=formatted_traces,
-            iterations=int(final_state.get("iterations", 0))
-        )
+        response_dict = {
+            "run_id": run_id,
+            "query": payload.query,
+            "rewritten_query": str(final_state.get("rewritten_query", "")),
+            "answer": str(final_state.get("generation", "")),
+            "citations": formatted_citations,
+            "evaluation_metrics": eval_scores,
+            "execution_trace": formatted_traces,
+            "iterations": int(final_state.get("iterations", 0))
+        }
+
+        return JSONResponse(content=sanitize_json_obj(response_dict))
     except Exception as exc:
         logger.exception("Error executing RAG query: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query execution error: {str(exc)}"
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Query execution error: {str(exc)}"}
         )
 
 
