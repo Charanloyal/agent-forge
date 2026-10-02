@@ -235,30 +235,40 @@ class QdrantVectorService:
         self._memory_points: list[dict[str, Any]] = []
         self._is_offline: bool = False
 
-    async def get_client(self) -> AsyncQdrantClient:
+    async def get_client(self) -> AsyncQdrantClient | None:
+        if self._is_offline:
+            return None
+        if settings.QDRANT_HOST in (":memory:", "memory"):
+            self._is_offline = True
+            return None
         if self.client is None:
-            if settings.QDRANT_HOST in (":memory:", "memory"):
-                self.client = AsyncQdrantClient(":memory:")
-            elif settings.QDRANT_HOST.startswith(("http://", "https://")):
-                self.client = AsyncQdrantClient(
-                    url=settings.QDRANT_HOST,
-                    api_key=settings.QDRANT_API_KEY,
-                    timeout=1.0
-                )
-            else:
-                self.client = AsyncQdrantClient(
-                    host=settings.QDRANT_HOST,
-                    port=settings.QDRANT_PORT,
-                    api_key=settings.QDRANT_API_KEY,
-                    timeout=1.0
-                )
+            try:
+                if settings.QDRANT_HOST.startswith(("http://", "https://")):
+                    self.client = AsyncQdrantClient(
+                        url=settings.QDRANT_HOST,
+                        api_key=settings.QDRANT_API_KEY,
+                        timeout=1.0
+                    )
+                else:
+                    self.client = AsyncQdrantClient(
+                        host=settings.QDRANT_HOST,
+                        port=settings.QDRANT_PORT,
+                        api_key=settings.QDRANT_API_KEY,
+                        timeout=1.0
+                    )
+            except Exception as exc:
+                self._is_offline = True
+                logger.warning("Could not initialize Qdrant client (%s). Using pure-Python vector engine.", exc)
+                return None
         return self.client
 
     async def ensure_collection(self) -> None:
-        if self._is_offline and settings.QDRANT_HOST not in (":memory:", "memory"):
+        if self._is_offline:
             return
         try:
             client = await self.get_client()
+            if client is None:
+                return
             collections_response = await client.get_collections()
             existing = [c.name for c in collections_response.collections]
             if settings.QDRANT_COLLECTION not in existing:
@@ -283,7 +293,11 @@ class QdrantVectorService:
         embeddings = model.encode(contents, normalize_embeddings=True, show_progress_bar=False)
 
         try:
+            if self._is_offline or settings.QDRANT_HOST in (":memory:", "memory"):
+                raise RuntimeError("Qdrant offline mode active")
             client = await self.get_client()
+            if client is None:
+                raise RuntimeError("No Qdrant client available")
             await self.ensure_collection()
 
             points = []
@@ -311,7 +325,7 @@ class QdrantVectorService:
             )
             logger.info("Upserted %d points to Qdrant collection %s", len(points), settings.QDRANT_COLLECTION)
         except Exception as exc:
-            logger.warning("Qdrant upsert failed (%s). Upserting to in-memory vector store.", exc)
+            logger.warning("Qdrant upsert notice (%s). Upserting to in-memory vector store.", exc)
             for chunk, emb in zip(chunks, embeddings):
                 emb_list = emb.tolist() if hasattr(emb, "tolist") else list(emb)
                 self._memory_points.append({
@@ -329,9 +343,11 @@ class QdrantVectorService:
         query_vector = raw_emb.tolist() if hasattr(raw_emb, "tolist") else list(raw_emb)
 
         try:
-            if self._is_offline and settings.QDRANT_HOST not in (":memory:", "memory"):
+            if self._is_offline or settings.QDRANT_HOST in (":memory:", "memory"):
                 raise RuntimeError("Qdrant offline mode active")
             client = await self.get_client()
+            if client is None:
+                raise RuntimeError("No Qdrant client available")
             await self.ensure_collection()
 
             if hasattr(client, "query_points"):
