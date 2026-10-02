@@ -232,7 +232,9 @@ class QdrantVectorService:
 
     async def get_client(self) -> AsyncQdrantClient:
         if self.client is None:
-            if settings.QDRANT_HOST.startswith(("http://", "https://", ":memory:")):
+            if settings.QDRANT_HOST in (":memory:", "memory"):
+                self.client = AsyncQdrantClient(":memory:")
+            elif settings.QDRANT_HOST.startswith(("http://", "https://")):
                 self.client = AsyncQdrantClient(
                     url=settings.QDRANT_HOST,
                     api_key=settings.QDRANT_API_KEY,
