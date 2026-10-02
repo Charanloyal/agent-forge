@@ -312,6 +312,33 @@ async def ingest_documents(payload: IngestRequest, db: AsyncSession = Depends(ge
     )
 
 
+def sanitize_json_obj(obj: Any) -> Any:
+    """
+    Recursively converts numpy types, UUIDs, and complex types to JSON-safe Python primitives.
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, (int, str, bool)):
+        return obj
+    if isinstance(obj, float):
+        return obj
+    if hasattr(obj, "item"):
+        try:
+            return obj.item()
+        except Exception:
+            pass
+    if hasattr(obj, "tolist"):
+        try:
+            return [sanitize_json_obj(x) for x in obj.tolist()]
+        except Exception:
+            pass
+    if isinstance(obj, dict):
+        return {str(k): sanitize_json_obj(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [sanitize_json_obj(x) for x in obj]
+    return str(obj)
+
+
 @app.post("/v1/query", response_model=QueryResponse, tags=["Agentic RAG"])
 async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_db)):
     """
@@ -323,70 +350,98 @@ async def query_rag_agent(payload: QueryRequest, db: AsyncSession = Depends(get_
     - Grounded generation with citation bracket indices
     - Hallucination checking & reflection loop
     - Programmatic evaluation scoring harness (Precision, Faithfulness, Relevance)
-    - Full PostgreSQL persistence of execution traces and evaluation metrics
+    - Full persistence of execution traces and evaluation metrics
     """
-    run_id = str(uuid.uuid4())
-    run_uuid = uuid.UUID(run_id)
+    try:
+        run_id = str(uuid.uuid4())
+        run_uuid = uuid.UUID(run_id)
 
-    # Execute State Machine
-    final_state = await run_agent_workflow(query=payload.query, run_id=run_id)
+        # Execute State Machine
+        final_state = await run_agent_workflow(query=payload.query, run_id=run_id)
+        final_state = sanitize_json_obj(final_state)
 
-    # Persist Execution Traces to PostgreSQL
-    traces = final_state.get("traces", [])
-    trace_entities: list[AgentExecutionTrace] = []
-    for t in traces:
-        trace_entities.append(
-            AgentExecutionTrace(
-                run_id=run_uuid,
-                step_name=t["step_name"],
-                step_index=t["step_index"],
-                input_state=t["input_state"],
-                output_state=t["output_state"],
-                latency_ms=t["latency_ms"]
+        # Persist Execution Traces
+        traces = final_state.get("traces", [])
+        trace_entities: list[AgentExecutionTrace] = []
+        for t in traces:
+            trace_entities.append(
+                AgentExecutionTrace(
+                    run_id=run_uuid,
+                    step_name=str(t["step_name"]),
+                    step_index=int(t["step_index"]),
+                    input_state=sanitize_json_obj(t.get("input_state", {})),
+                    output_state=sanitize_json_obj(t.get("output_state", {})),
+                    latency_ms=float(t.get("latency_ms", 0.0))
+                )
             )
-        )
-    if trace_entities:
-        db.add_all(trace_entities)
+        if trace_entities:
+            try:
+                db.add_all(trace_entities)
+            except Exception as e:
+                logger.warning("Trace entity persistence warning: %s", e)
 
-    # Persist Evaluation Metrics to PostgreSQL
-    eval_scores = final_state.get("evaluation_scores", {})
-    if eval_scores:
-        metric_entity = EvaluationMetric(
-            run_id=run_uuid,
+        # Persist Evaluation Metrics
+        eval_scores = sanitize_json_obj(final_state.get("evaluation_scores", {}))
+        if eval_scores:
+            try:
+                metric_entity = EvaluationMetric(
+                    run_id=run_uuid,
+                    query=payload.query,
+                    context_precision=float(eval_scores.get("context_precision", 0.0)),
+                    faithfulness_score=float(eval_scores.get("faithfulness_score", 0.0)),
+                    answer_relevance=float(eval_scores.get("answer_relevance", 0.0)),
+                    evaluation_details=eval_scores
+                )
+                db.add(metric_entity)
+            except Exception as e:
+                logger.warning("Metric entity persistence warning: %s", e)
+
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.warning("DB commit warning: %s", e)
+
+        # Format Citations
+        raw_citations = final_state.get("citations", [])
+        formatted_citations = [
+            CitationItem(
+                citation_index=int(c["citation_index"]),
+                chunk_id=str(c["chunk_id"]),
+                document_id=str(c["document_id"]),
+                relevance_score=float(c["relevance_score"]),
+                snippet=str(c["snippet"]),
+                metadata=sanitize_json_obj(c.get("metadata", {}))
+            )
+            for c in raw_citations
+        ]
+
+        formatted_traces = [
+            TraceStep(
+                step_name=str(t["step_name"]),
+                step_index=int(t["step_index"]),
+                input_state=sanitize_json_obj(t.get("input_state", {})),
+                output_state=sanitize_json_obj(t.get("output_state", {})),
+                latency_ms=float(t.get("latency_ms", 0.0))
+            )
+            for t in traces
+        ]
+
+        return QueryResponse(
+            run_id=run_id,
             query=payload.query,
-            context_precision=eval_scores.get("context_precision", 0.0),
-            faithfulness_score=eval_scores.get("faithfulness_score", 0.0),
-            answer_relevance=eval_scores.get("answer_relevance", 0.0),
-            evaluation_details=eval_scores
+            rewritten_query=str(final_state.get("rewritten_query", "")),
+            answer=str(final_state.get("generation", "")),
+            citations=formatted_citations,
+            evaluation_metrics=eval_scores,
+            execution_trace=formatted_traces,
+            iterations=int(final_state.get("iterations", 0))
         )
-        db.add(metric_entity)
-
-    await db.commit()
-
-    # Format Citations
-    raw_citations = final_state.get("citations", [])
-    formatted_citations = [
-        CitationItem(
-            citation_index=c["citation_index"],
-            chunk_id=c["chunk_id"],
-            document_id=c["document_id"],
-            relevance_score=c["relevance_score"],
-            snippet=c["snippet"],
-            metadata=c.get("metadata", {})
+    except Exception as exc:
+        logger.exception("Error executing RAG query: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Query execution error: {str(exc)}"
         )
-        for c in raw_citations
-    ]
-
-    return QueryResponse(
-        run_id=run_id,
-        query=payload.query,
-        rewritten_query=final_state.get("rewritten_query", ""),
-        answer=final_state.get("generation", ""),
-        citations=formatted_citations,
-        evaluation_metrics=eval_scores,
-        execution_trace=[TraceStep(**t) for t in traces],
-        iterations=final_state.get("iterations", 0)
-    )
 
 
 @app.get("/v1/traces/{run_id}", tags=["Observability"])
